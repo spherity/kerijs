@@ -1,15 +1,25 @@
 const libsodium = require('libsodium-wrappers-sumo');
-const { Crymat } = require('./cryMat');
+const { Matter } = require('./matter');
 const codeAndLength = require('./derivationCode&Length');
 
 /**
- * @description  Verfer :sublclass of crymat,helps to verify signature of serialization
- *  using .raw as verifier key and .code as signature cypher suite
+ * @description   Verfer is Matter subclass with method to verify signature of serialization
+    using the .raw as verifier key and .code for signature cipher suite.
+
+    See Matter for inherited attributes and properties:
+
+    Attributes:
+
+    Properties:
+
+    Methods:
+        verify: verifies signature
  */
-class Verfer extends Crymat {
+class Verfer extends Matter {
   // eslint-disable-next-line max-len
-  constructor(raw = null, qb64 = null, qb2 = null, code = codeAndLength.oneCharCode.Ed25519N, index = 0) {
-    super(raw, qb64, qb2, code, index);
+  constructor(raw = null,code = codeAndLength.oneCharCode.Ed25519N, qb64b=null, qb64 = null, qb2 = null) {
+      console.log("Value of Code Inside Verfer is ,code",code)
+      super(raw, code, qb64b, qb64, qb2);
     if (Object.values(codeAndLength.oneCharCode.Ed25519N).includes(this.getCode)
             || Object.values(codeAndLength.oneCharCode.Ed25519).includes(this.getCode)) {
       this.verifySig = this.ed25519;

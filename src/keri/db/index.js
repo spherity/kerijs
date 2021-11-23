@@ -1,6 +1,6 @@
-const { Databaser, dgkey, snkey } = require('./database');
+const { Databaser, dgkey, snKey } = require('./database');
 const { Logger, openLogger } = require('./logger');
 
 module.exports = {
-  Databaser, dgkey, snkey, Logger, openLogger,
+  Databaser, dgkey, snKey, Logger, openLogger,
 };

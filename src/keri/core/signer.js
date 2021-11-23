@@ -1,21 +1,33 @@
 const libsodium = require('libsodium-wrappers-sumo');
-const { Crymat } = require('./cryMat');
+const { Matter } = require('./matter');
 const derivationCodes = require('./derivationCode&Length');
 const { Verfer } = require('./verfer');
-const { Sigver } = require('./sigver');
+const { Cigar } = require('./Cigar');
 const { Siger } = require('./siger');
 const { range } = require('./utls');
 
 /**
- * @description Signer is CryMat subclass with method to create signature of serialization
- * It will use .raw as signing (private) key seed
- * .code as cipher suite for signing and new property .verfer whose property
- *  .raw is public key for signing.
- *  If not provided .verfer is generated from private key seed using .code
+ * @description   Signer is Matter subclass with method to create signature of serialization
+    using the .raw as signing (private) key seed, .code as cipher suite for
+    signing and new property .verfer whose property .raw is public key for signing.
+    If not provided .verfer is generated from private key seed using .code
     as cipher suite for creating key-pair.
+
+
+    See Matter for inherited attributes and properties:
  */
 
-class Signer extends Crymat {
+class Signer extends Matter {
+
+  /**
+   * @description Assign signing cipher suite function to ._sign
+   * @param {*} raw bytes crypto material seed or private key
+   * @param {*} code  code is derivation code
+   * @param {*} transferable transferable is Boolean True means verifier code is transferable
+                                    False othersize non-transerable
+   * @param {*} lib 
+   * @param {*} qb64 
+   */
   constructor(
     raw = null,
     code = derivationCodes.oneCharCode.Ed25519_Seed,
@@ -26,21 +38,23 @@ class Signer extends Crymat {
     let setVerfer;
     let seedKeypair;
     try {
-   
-      super(raw, qb64, null, code);
+      super(raw,code,null, qb64);
     } catch (error) {
+      console.log("Empty material error : ")
       if (code === derivationCodes.oneCharCode.Ed25519_Seed) {
         raw = libsodium.randombytes_buf(libsodium.crypto_sign_SEEDBYTES);
         raw = Buffer.from(raw, 'binary');
-        super(raw, null, null, code);
+        console.log("Value of Raw buffer is = ",raw.toString('hex'))
+        super(raw, code, null, null);
       } else {
         throw new Error(`Unsupported signer code = ${code}.`);
       }
     }
     if (code === derivationCodes.oneCharCode.Ed25519_Seed) {
       this.getSign = this.ed25519;
+      console.log("Value of this.getRaw = ",this.getRaw)
       if (raw == null) {
-        raw = this.raw();
+        raw = this.getRaw;
       }
       seedKeypair = libsodium.crypto_sign_seed_keypair(raw);
       const verkey = Buffer.from(seedKeypair.publicKey, 'binary');
@@ -49,15 +63,11 @@ class Signer extends Crymat {
       if (transferable) {
         setVerfer = new Verfer(
           verkey,
-          null,
-          null,
           derivationCodes.oneCharCode.Ed25519,
         );
       } else {
         setVerfer = new Verfer(
           verkey,
-          null,
-          null,
           derivationCodes.oneCharCode.Ed25519N,
         );
       }
@@ -97,6 +107,7 @@ class Signer extends Crymat {
  * @param {*} index
  */
   sign(ser, index = null) {
+    console.log("Value of his.verfer()",this.verfer())
     return this.getSign(ser, this.raw(), this.verfer(), index);
   }
 
@@ -115,16 +126,16 @@ class Signer extends Crymat {
     );
     sig = Buffer.from(sig, 'binary');
     if (index == null) {
-      const response = new Sigver(
-        sig,
-        derivationCodes.twoCharCode.Ed25519,
-        verfer,
-      );
+      console.log("Value of Sig = ",sig , derivationCodes.twoCharCode.Ed25519_SIG)
+      let kwa = [sig, derivationCodes.twoCharCode.Ed25519_SIG, verfer]
+      const response = new Cigar(null, ...kwa);
       response.setVerfer(verfer);
       return response;
-    }
-    const args = [sig, null, null, derivationCodes.SigTwoCodex.Ed25519];
+    }else{
+      const args = [sig, null, null, derivationCodes.SigTwoCodex.Ed25519];
     return new Siger(verfer, ...args);
+    }
+   
   }
 }
 

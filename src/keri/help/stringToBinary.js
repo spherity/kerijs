@@ -62,8 +62,51 @@ function b64ToInt(cs) {
 
   return i;
 }
+
+function ToInteger(x) {
+  x = Number(x);
+  return x < 0 ? Math.ceil(x) : Math.floor(x);
+}
+
+function modulo(a, b) {
+  return a - Math.floor(a/b)*b;
+}
+function ToUint32(x) {
+  return modulo(ToInteger(x), Math.pow(2, 32));
+}
+
+function ToInt32(x) {
+  var uint32 = ToUint32(x);
+  if (uint32 >= Math.pow(2, 31)) {
+      return uint32 - Math.pow(2, 32)
+  } else {
+      return uint32;
+  }
+}
+
+
+function intToB64ForBigInt(i, l = 1) {
+  const queue = [];
+  queue.unshift(derivationCodeLength.b64ChrByIdx[i % BigInt(64)]); 
+  i = i / BigInt(64)
+  if (i > BigInt(0)) {
+    for (let k = 0; k <= i; k++) {
+      queue.unshift(derivationCodeLength.b64ChrByIdx[i % BigInt(64)]);
+      i = i / BigInt(64)
+    }
+  }
+
+  const {length} = queue;
+
+  for (let j = 0; j < l - length; j++) {
+    queue.unshift(derivationCodeLength.b64ChrByIdx[j % 64]);
+  }
+  return queue.join('');
+}
 module.exports = {
   string2Bin,
   intToB64,
   b64ToInt,
+  ToInt32,
+  intToB64ForBigInt,
 };

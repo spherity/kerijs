@@ -5,6 +5,7 @@ const msgpack = require('msgpack5')();
 const { encode } = msgpack;
 const { decode } = msgpack;
 const cbor = require('cbor');
+const utf8 = require('utf8');
 const blake3 = require('blake3');
 const XRegExp = require('xregexp');
 const { Diger } = require('./diger');
@@ -68,7 +69,7 @@ class Serder {
       Note:
         loads and jumps of json use str whereas cbor and msgpack use bytes
    */
-  constructor(raw = Buffer.from('', 'binary'), ked = null, kind = null) {
+    constructor(raw = Buffer.from('', 'binary'), ked = null, kind = null) {
     if (raw) this.getRaw = raw;
     else if (ked) {
       this.getKed = ked;
@@ -84,7 +85,7 @@ class Serder {
 
   sniff(raw) {
     let [major, minor, kind, size] = '';
-    if (raw.length < MINSNIFFSIZE) {throw new Error('"Need more bytes."'); }
+    if (raw.length < MINSNIFFSIZE) { throw new Error('"Need more bytes."'); }
 
     const versionPattern = Buffer.from(
       'KERI(?<major>[0-9a-f])(?<minor>[0-9a-f])(?<kind>[A-Z]{4})(?<size>[0-9a-f]{6})_',
@@ -168,6 +169,7 @@ class Serder {
    * @param {*} kind kind is serialzation kind
    */
   exhale(ked, kind = null) {
+    console.log("Value of Ked = ",ked)
     let raw;
     const versionPattern = Buffer.from(
       'KERI(?<major>[0-9a-f])(?<minor>[0-9a-f])(?<kind>[A-Z]{4})(?<size>[0-9a-f]{6})_',
@@ -175,11 +177,11 @@ class Serder {
     );
     const regex = XRegExp(versionPattern);
     let response;
-    if (Object.values(JSON.stringify(ked)).includes('vs')) {
+    if (Object.keys(JSON.stringify(ked)).includes('v')) {
       throw new Error(`Missing or empty version string in key event dict =${ked}`);
     }
 
-    let [knd, version, size] = deversify(ked.vs);
+    let [knd, version, size] = deversify(ked.v);
 
     if (!_.isEqual(version, Versionage)) throw new Error(`Unsupported version = ${Versionage.major}.${Versionage.minor}`);
 
@@ -222,11 +224,12 @@ class Serder {
 
     const vs = versify(version, kind, size);
     raw = JSON.parse(raw);
-    raw.vs = vs;
+    raw.v = vs;
     const traw = JSON.stringify(raw);
+    console.log("size !== traw.length  =================>",raw)
     if (size !== traw.length) throw new Error(`Malformed version string size = ${vs}`);
 
-    ked.vs = vs;
+    ked.v = vs;
 
     return [traw, kind, ked, version];
   }
@@ -329,6 +332,54 @@ class Serder {
     }
 
     return val;
+  }
+
+
+  /**
+   * @description Returns True  if dig and either .diger.qb64 or .diger.qb64b match or
+      if both .diger.raw and dig are valid digests of self.raw
+      Otherwise returns False
+
+  Convenience method to allow comparison of own .diger digest self.raw
+  with some other purported digest of self.raw
+   * @param {*} dig dig is qb64b or qb64 digest of ser to compare with .diger.raw
+   * @param {*} diger diger is Diger instance of digest of ser to compare with .diger.raw
+
+      if both supplied dig takes precedence
+  If both match then as optimization returns True and does not verify either
+    as digest of ser
+  If both have same code but do not match then as optimization returns False
+     and does not verify if either is digest of ser
+  But if both do not match then recalcs both digests to verify they
+  they are both digests of ser with or without matching codes.
+   */
+
+  compare(dig = null, diger = null) {
+    return (this.diger.compare(this.raw(), dig, diger));
+  }
+
+  /**
+   * @description  Returns int of .ked["s"] (sequence number)
+                   sn (sequence number) property getter
+   */
+  sn() {
+    return parseInt(this.ked.s, 10);
+  }
+
+  /**
+   * @description Returns str qb64  of .ked["i"] (identifier prefix)
+        pre (identifier prefix) property getter
+   */
+  pre() {
+    return this.ked['i'];
+  }
+
+  /**
+   * @desscription Returns bytes qb64b  of .ked["i"] (identifier prefix)
+        preb (identifier prefix) property getter
+   */
+  preb() {
+    return utf8.encode(this.pre);
   }
 }
 

@@ -1,4 +1,4 @@
-const { Databaser } = require('./database');
+const {  snKey, Databaser } = require('./database');
 
 /**
  * @description  Logger sets up named sub databases with Keri Event Logs within main database
@@ -579,8 +579,8 @@ class Logger extends Databaser {
          Returns True if written else False if dup val already exists
          Duplicates are inserted in insertion order.
       */
-  async addKe(key, val, flag) {
-    return await this.addIOVal(Buffer.from('kels.', 'binary'), key, val, flag);
+   addKe(key, val, flag) {
+    return  this.addIOVal(Buffer.from('kels.', 'binary'), key, val, flag);
   }
 
   /**
@@ -641,6 +641,7 @@ class Logger extends Databaser {
     if (pre) {
       pre = encodeURIComponent(pre);
     }
+    console.log("OIONSIDE HERE ")
     return this.getIoValsAllPreIter(Buffer.from('kels.', 'binary'), pre);
   }
 

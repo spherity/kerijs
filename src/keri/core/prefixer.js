@@ -2,38 +2,85 @@
 /* eslint-disable no-underscore-dangle */
 const blake3 = require('blake3');
 const libsodium = require('libsodium-wrappers-sumo');
-const Base64 = require('urlsafe-base64');
-const { Crymat } = require('./cryMat');
+const {Matter } = require('./matter');
+const {Serder } = require('./serder');
 const { extractValues } = require('./utls');
 const derivationCodes = require('./derivationCode&Length');
-const { Verfer } = require('./verfer');
-
-const { Sigver } = require('./sigver');
 const { Ilks, IcpLabels, DipLabels, IcpExcludes, DipExcludes } = require('./core');
-const { Serder } = require('./serder');
-const { Signer } = require('./signer');
+const { Signer, Cigar, Sigver, Verfer } = require('./index');
+
 
 /**
- * @description Prefixer is CryMat subclass for autonomic identifier prefix using basic derivation
-    from public key
-    inherited attributes and properties:
+ * @description  Prefixer is Matter subclass for autonomic identifier prefix using
+    derivation as determined by code from ked
+
     Attributes:
+
+    Inherited Properties:  (see Matter)
+        .pad  is int number of pad chars given raw
+        .code is  str derivation code to indicate cypher suite
+        .raw is bytes crypto material only without code
+        .index is int count of attached crypto material by context (receipts)
+        .qb64 is str in Base64 fully qualified with derivation code + crypto mat
+        .qb64b is bytes in Base64 fully qualified with derivation code + crypto mat
+        .qb2  is bytes in binary with derivation code + crypto material
+        .nontrans is Boolean, True when non-transferable derivation code False otherwise
+
     Properties:
-    Methods:verify():  Verifies derivation of aid
+
+    Methods:
+        verify():  Verifies derivation of aid prefix from a ked
+
+    Hidden:
+        ._pad is method to compute  .pad property
+        ._code is str value for .code property
+        ._raw is bytes value for .raw property
+        ._index is int value for .index property
+        ._infil is method to compute fully qualified Base64 from .raw and .code
+        ._exfil is method to extract .code and .raw from fully qualified Base64
  */
 
-class Prefixer extends Crymat {
+class Prefixer extends Matter {
   //        elements in digest or signature derivation from inception icp
   //  IcpLabels ["sith", "keys", "nxt", "toad", "wits", "cnfg"]
 
   //  elements in digest or signature derivation from delegated inception dip
   //  DipLabels  ["sith", "keys", "nxt", "toad", "wits", "perm", "seal"]
 
+
+  Dummy = "#"  // dummy spaceholder char for pre. Must not be a valid Base64 char
+  //# element labels to exclude in digest or signature derivation from inception icp
+  IcpExcludes = ["i"]
+  //# element labels to exclude in digest or signature derivation from delegated inception dip
+  DipExcludes = ["i"]
+
   /**
    * @description  // This constructor will assign
    *  ._verify to verify derivation of aid  = .qb64
    */
   constructor(
+
+    // """
+    // assign ._derive to derive derivatin of aid prefix from ked
+    // assign ._verify to verify derivation of aid prefix  from ked
+
+    // Default code is None to force EmptyMaterialError when only raw provided but
+    // not code.
+
+    // Inherited Parameters:
+    //     raw is bytes of unqualified crypto material usable for crypto operations
+    //     qb64b is bytes of fully qualified crypto material
+    //     qb64 is str or bytes  of fully qualified crypto material
+    //     qb2 is bytes of fully qualified crypto material
+    //     code is str of derivation code
+    //     index is int of count of attached receipts for CryCntDex codes
+
+    // Parameters:
+    //     seed is bytes seed when signature derivation
+    //     secret is qb64 when signature derivation when applicable
+    //        one of seed or secret must be provided when signature derivation
+
+    // """
     raw = null,
     code = derivationCodes.oneCharCode.Ed25519N,
     ked = null,
@@ -45,9 +92,17 @@ class Prefixer extends Crymat {
     let deriveFunc = null;
 
     try {
-      super(raw, qb64, qb2, code);
+      super(raw, code, qb64, qb2);
     } catch (error) {
-      if (!(ked || code)) throw error; // throw error if no ked found
+      console.log("INSIDE CATCH ===========================>",(!(ked || (ked.c && ked.i))));
+      if (!(ked || (ked.c && ked.i))) throw error; // throw error if no ked found
+      if(!code){
+        super(null,code, null, ked.i)
+        code = this.code();
+      }
+
+
+      
 
       if (code === derivationCodes.oneCharCode.Ed25519N) {
         deriveFunc = DeriveBasicEd25519N;
@@ -60,7 +115,7 @@ class Prefixer extends Crymat {
       } else throw new Error(`Unsupported code = ${code} for prefixer.`);
 
       const verfer = deriveFunc(ked, seed, secret); // else obtain AID using ked
-      super(verfer.raw, null, null, verfer.code, 0);
+      super(verfer.raw, verfer.code);
     }
 
     if (this.getCode === derivationCodes.oneCharCode.Ed25519N) {
@@ -90,11 +145,18 @@ class Prefixer extends Crymat {
   }
 
   /**
-   * @description  This function will return TRUE if derivation from iked for .code matches .qb64
+   * @description  This function will return TRUE   if derivation from ked for .code matches .qb64 and
+                If prefixed also verifies ked["i"] matches .qb64
+                False otherwise
+
    * @param {*} ked inception key event dict
    */
-  verify(ked) {
-    return this.verifyDerivation(ked, this.qb64());
+  verify(ked,prefixed=false) {
+   // Object.values(Ilks.icp).includes(labels[l])
+    if(!(ked["t"] == Ilks.icp || Ilks.dip)){
+      throw new Error(`Nonincepting ilk= ${ked["t"]} for prefix derivation."`)
+    }
+    return this.verifyDerivation(ked, this.qb64(), prefixed);
   }
 
   /**
@@ -104,18 +166,26 @@ class Prefixer extends Crymat {
      * @param {*} pre   pre is Base64 fully qualified prefix
      */
   // eslint-disable-next-line class-methods-use-this
-  VerifyBasicEd25519N(ked, pre) {
+  VerifyBasicEd25519N(ked, pre, prefixed=false) {
     let keys = null;
 
     try {
-      keys = ked.keys;
+      keys = ked.k;
       if (keys.length !== 1) {
+        console.log("KEY LENGTH ==",keys.length)
         return false;
       }
-      if (keys[0] !== pre) { return false; }
-      if (ked.nxt) {
+      if (keys[0] !== pre) {console.log('key[0]  is not equal to pre'); return false; }
+      if(prefixed && ked.i != pre){
+        
+        console.log('prefixed && ked["i"]=================> FALSE',pre , prefixed , ked.i)
+        return false
+      }
+      if (ked.n) {
+        console.log('ked.n =========================> FALSE')
         return false; }
     } catch (e) {
+      console.log('e =========================> FALSE')
       return false;
     }
     return true;
@@ -129,14 +199,20 @@ class Prefixer extends Crymat {
      * @param {*} pre   pre is Base64 fully qualified prefix
      */
   // eslint-disable-next-line class-methods-use-this
-  VerifyBasicEd25519(ked, pre) {
-    const { keys } = ked;
+  VerifyBasicEd25519(ked, pre,prefixed=false) {
+    const  keys  = ked.k;
     try {
-      if (keys.length !== 1) return false;
-      if (keys[0] !== pre) {
+      if (keys.length != 1) {
+
+        console.log("Failed here ",keys)
+        return false;
+      }
+      if (prefixed && ked.i != pre) {
+        console.log("INSIDE HEREE : ===================>")
         return false;
       }
     } catch (e) {
+      console.log("Inside catch is =================?",e)
       return false;
     }
     return true;
@@ -149,7 +225,7 @@ class Prefixer extends Crymat {
              * @param {*} pre   pre is Base64 fully qualified prefix
      */
   // eslint-disable-next-line camelcase
-  verifyDigBlake3_256(ked, pre) {
+  verifyDigBlake3_256(ked, pre, prefixed=false) {
     let [raw, code, response, crymat] = '';
     try {
       response = DeriveDigBlake3_256(ked);
@@ -157,7 +233,7 @@ class Prefixer extends Crymat {
       code = response.code;
 
       crymat = new Crymat(raw, null, null, code);
-      if (crymat.qb64() !== pre) return false;
+      if ((prefixed && crymat.qb64()) !== pre) return false;
     } catch (error) {
       return false;
     }
@@ -172,7 +248,7 @@ class Prefixer extends Crymat {
      */
   // eslint-disable-next-line no-underscore-dangle
   // eslint-disable-next-line class-methods-use-this
-  VerifySigEd25519(ked, pre) {
+  VerifySigEd25519(ked, pre, prefixed=false) {
     let ilk = null;
     let labels;
     let values;
@@ -180,22 +256,45 @@ class Prefixer extends Crymat {
     const keys = ked.keys;
     let verfer;
     let sigver = null;
+    let dked = ked
     try {
-      ilk = ked.ilk;
-      if (ilk === Ilks.icp) labels = IcpLabels;
-      if (ilk === Ilks.icp) labels = DipLabels;
+      ilk = dked.t;
+      if (ilk === Ilks.icp) {
+        for(let key in dked){
+          if(!(dked(key) in this.IcpExcludes )){
+            labels = [dked(key)]
+          }
+        }
+        
+       // labels = IcpLabels;
+      }
+      if (ilk === Ilks.dip){
+        for(let key in dked){
+          if(!(dked(key) in this.DipExcludes )){
+            labels = [dked(key)]
+          }
+        }
+      }
+      //labels = DipLabels;
       else throw new Error(`Invalid ilk = ${ilk} to derive pre.`);
 
+
+      dked["i"] = `${this.Dummy*derivationCodes.Codes[derivationCodes.oneCharCode.Ed25519_Sig].fs}`
+      //"{}".format(self.Dummy*Matter.Codes[MtrDex.Ed25519_Sig].fs)
+           let serder =  new Serder(null, dked);
+            dked = serder.ked();    //# use updated ked with valid vs element
       for (const l in labels) {
-        if (!Object.values(ked).includes(l)) {
+        if (!Object.values(dked).includes(l)) {
           throw new Error(`Missing element = ${l} from ked.`);
         }
       }
 
+    
 
-      values = extractValues(ked, labels);
-      ser = Buffer.from(''.concat(values), 'utf-8');
+      // values = extractValues(ked, labels);
+      // ser = Buffer.from(''.concat(values), 'utf-8');
       try {
+       let keys = dked["k"]
         if (keys.length !== 1) throw new Error(`Basic derivation needs at most 1 key got ${keys.length} keys instead`);
         verfer = new Verfer(null, keys[0]);
       } catch (e) {
@@ -208,14 +307,20 @@ class Prefixer extends Crymat {
       ) {
         throw new Error(`Invalid derivation code = ${verfer.code()}`);
       }
+      if((prefixed && ked["i"]) != pre){
+        return  false
+      }
+      let kwa = [null, derivationCodes.allCharcodes.Ed25519N, null, pre]
+      let cigar = new  Cigar(verfer, ...kwa)
 
-      sigver = new Sigver(
-        null,
-        derivationCodes.twoCharCode.Ed25519,
-        verfer,
-        0,
-        pre,
-      );
+     let response = cigar.verfer.verify(sig=cigar.raw, ser=serder.raw)
+      // sigver = new Sigver(
+      //   null,
+      //   derivationCodes.twoCharCode.Ed25519,
+      //   verfer,
+      //   0,
+      //   pre,
+      // );
       const result = sigver.verfer().verify(sigver.raw(), ser);
       return result;
     } catch (exception) {
@@ -268,9 +373,9 @@ function DeriveBasicEd25519N(ked) {
   let verfer = null;
   let keys;
   try {
-    keys = ked.keys;
+    keys = ked.k;
     if (keys.length !== 1) throw new Error(`Basic derivation needs at most 1 key got ${keys.length} keys instead`);
-    verfer = new Verfer(null, keys[0]);
+    verfer = new Verfer(null, derivationCodes.oneCharCode.Ed25519N, null, keys[0]);
   } catch (e) {
     throw new Error(`Error extracting public key = ${e}`);
   }
@@ -314,9 +419,9 @@ function DeriveDigBlake3_256(ked) {
   let values = null;
   let ser = null;
   let dig = null;
-  const { ilk } = ked;
+  const { t } = ked;
 
-  if (ilk === Ilks.icp) {
+  if (t === Ilks.icp) {
     objKeys = Object.keys(ked);
     for(let keys in objKeys){
       if(!(IcpExcludes.includes(objKeys[keys]))){
@@ -326,13 +431,13 @@ function DeriveDigBlake3_256(ked) {
     // labels = IcpLabels;
   } 
   // if (ilk === Ilks.icp) labels = IcpLabels;
-  else if (ilk === Ilks.dip) labels = DipLabels;
-  else throw new Error(`Invalid ilk = ${ilk} to derive pre.`);
+  else if (t === Ilks.dip) labels = DipLabels;
+  else throw new Error(`Invalid ilk = ${t} to derive pre.`);
 
   ked.pre = 'a'.repeat(
     derivationCodes.CryOneSizes[derivationCodes.oneCharCode.Blake3_256],
   );
-  const serder = new Serder(null, ked);
+   let serder = new Serder(null, ked, null);
   // serder.set_raw(serder.getRaw);
   ked = serder.ked();
   serder.set_ked(ked);
